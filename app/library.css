@@ -1278,6 +1278,34 @@ body {
     border: 1px solid rgba(0, 188, 212, 0.3);
 }
 
+.char-card .card-quick-chat {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    width: 28px;
+    height: 28px;
+    background: rgba(0, 0, 0, 0.6);
+    border-radius: var(--radius-circle);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-primary);
+    font-size: 13px;
+    z-index: 10;
+    backdrop-filter: blur(4px);
+    opacity: 0;
+    transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+
+.char-card:hover .card-quick-chat {
+    opacity: 1;
+}
+
+.char-card .card-quick-chat:hover {
+    background: var(--accent);
+    color: #fff;
+}
+
 .hide-playlist-badges .playlist-indicator {
     display: none;
 }

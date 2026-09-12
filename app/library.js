@@ -10534,6 +10534,12 @@ function setupCharacterGridDelegates() {
         const char = currentCharByAvatar.get(avatar);
         if (!char) return;
 
+        if (e.target.closest('.card-quick-chat')) {
+            e.stopPropagation();
+            window.chatsModule?.openChat?.(char, char.chat);
+            return;
+        }
+
         // Delegate to multi-select module if active
         if (window.handleCardClickForMultiSelect && window.handleCardClickForMultiSelect(char, card)) {
             return; // Multi-select handled it
@@ -10689,6 +10695,19 @@ function createCharacterCard(char) {
         favIcon.className = 'fa-solid fa-star';
         favDiv.appendChild(favIcon);
         card.appendChild(favDiv);
+    }
+
+    // Quick-open the character's most recent chat directly, without going through the detail
+    // modal - char.chat is the card's most-recent chat filename (see isActiveChat's note in
+    // chats.js), a stable no-network signal already on the character object.
+    if (char.chat) {
+        const quickChatBtn = document.createElement('div');
+        quickChatBtn.className = 'card-quick-chat';
+        quickChatBtn.title = 'Open most recent chat';
+        const quickChatIcon = document.createElement('i');
+        quickChatIcon.className = 'fa-solid fa-comment';
+        quickChatBtn.appendChild(quickChatIcon);
+        card.appendChild(quickChatBtn);
     }
 
     // Playlist indicator

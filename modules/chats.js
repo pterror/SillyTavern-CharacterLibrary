@@ -2414,6 +2414,7 @@ export default {
     // Modal chats tab
     fetchCharacterChats,
     createNewChat,
+    openChat,
 
     // Top-level chats view
     initChatsView,
