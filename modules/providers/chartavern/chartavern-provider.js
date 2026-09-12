@@ -8,7 +8,6 @@ import CoreAPI from '../../core-api.js';
 import { assignGalleryId, importFromPng } from '../provider-utils.js';
 import chartavernBrowseView from './chartavern-browse.js';
 import {
-    CT_SITE_BASE,
     fetchWithProxy,
     searchCards,
     fetchCharacterDetail,
@@ -25,6 +24,8 @@ import {
     ctSetCookie,
     ctValidateSession,
     fetchCtSessionInfo,
+    initChartavernApi,
+    getCtSiteBase,
 } from './chartavern-api.js';
 
 let api = null;
@@ -119,7 +120,7 @@ class ChartavernProvider extends ProviderBase {
     get id() { return 'chartavern'; }
     get name() { return 'CharacterTavern'; }
     get icon() { return 'fa-solid fa-beer-mug-empty'; }
-    get iconUrl() { return `${CT_SITE_BASE}/favicon.ico`; }
+    get iconUrl() { return `${getCtSiteBase()}/favicon.ico`; }
     // Base SFW browse works without cl-helper (ctFetch falls to ST /proxy/ when no session), so
     // NO global minClHelperVersion. Only NSFW (cookie session via /ct-proxy) is cl-helper-gated.
     get clHelperFeatures() { return { nsfw: { minVersion: '1.0.0', label: 'NSFW browsing' } }; }
@@ -137,6 +138,7 @@ class ChartavernProvider extends ProviderBase {
 
     async init(coreAPI) {
         super.init(coreAPI);
+        initChartavernApi({ getSetting: coreAPI.getSetting });
         api = coreAPI;
 
         // Boot keep-alive: slide CT's sliding 10-day session so it doesnt lapse for users who

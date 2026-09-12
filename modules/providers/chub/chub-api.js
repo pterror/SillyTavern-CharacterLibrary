@@ -8,9 +8,49 @@
 // CONSTANTS
 // ========================================
 
-export const CHUB_API_BASE = 'https://api.chub.ai';
-export const CHUB_GATEWAY_BASE = 'https://gateway.chub.ai';
-export const CHUB_AVATAR_BASE = 'https://avatars.charhub.io/avatars/';
+// Default upstream hosts. ChubAI splits across three of them:
+//   api.chub.ai           - REST API
+//   gateway.chub.ai       - GraphQL gateway / favorites / gallery
+//   avatars.charhub.io    - public CDN for avatars and card PNGs
+const CHUB_DEFAULT_API     = 'https://api.chub.ai';
+const CHUB_DEFAULT_GATEWAY = 'https://gateway.chub.ai';
+const CHUB_DEFAULT_AVATAR  = 'https://avatars.charhub.io/avatars/';
+
+// When the user runs ChubAI through their own gateway, only one base URL
+// is usually needed. The convention below mirrors the gateway used by
+// this extension upstream (`/v1/chub`, `/v1/chub-gw`, `/v1/chub-av`); a
+// reverse proxy that uses these paths gets the simple single-field setup.
+// Per-host overrides are still available for non-standard topologies.
+const CHUB_GATEWAY_PATHS = {
+    api:    '/v1/chub',
+    gw:     '/v1/chub-gw',
+    avatar: '/v1/chub-av/avatars/',
+};
+
+function _trimSlash(s) {
+    return s.replace(/\/+$/, '');
+}
+
+function _resolveChubBase(overrideKey, defaultBase, gatewayPath) {
+    const override = _trimSlash((_getSetting?.(overrideKey) || '').trim());
+    if (override) return override;
+    const base = _trimSlash((_getSetting?.('chubGatewayBaseUrl') || '').trim());
+    if (base) return base + gatewayPath;
+    return defaultBase;
+}
+
+export function getChubApiBase() {
+    return _resolveChubBase('chubGatewayApiUrl', CHUB_DEFAULT_API, CHUB_GATEWAY_PATHS.api);
+}
+
+export function getChubGatewayBase() {
+    return _resolveChubBase('chubGatewayGatewayUrl', CHUB_DEFAULT_GATEWAY, CHUB_GATEWAY_PATHS.gw);
+}
+
+export function getChubAvatarBase() {
+    const base = _resolveChubBase('chubGatewayAvatarUrl', CHUB_DEFAULT_AVATAR, CHUB_GATEWAY_PATHS.avatar);
+    return base.endsWith('/') ? base : base + '/';
+}
 
 // ========================================
 // INITIALIZATION
@@ -44,11 +84,21 @@ function debugLog(...args) {
  */
 export function getChubHeaders(includeAuth = true) {
     const headers = { 'Accept': 'application/json' };
+    const gwKey = _getSetting?.('chubGatewayKey');
     const token = _getSetting?.('chubToken');
+    if (gwKey) {
+        // Going through a self-hosted gateway: gateway key authenticates to the gateway itself,
+        // real chub token forwarded separately so the gateway can re-attach it upstream however
+        // that gateway expects (its contract, not chub.ai's).
+        headers['Authorization'] = `Bearer ${gwKey}`;
+        if (includeAuth && token) headers['X-Chub-Token'] = token;
+        return headers;
+    }
     if (includeAuth && token) {
-        // chub.ai's gateway accepts the same credential under any of these three header names
-        // depending on endpoint (confirmed empirically against /search); send all three so auth-gated
-        // content (e.g. NSFL) isn't silently dropped just because one endpoint prefers a different one.
+        // Talking to chub.ai directly: its gateway accepts the same credential under any of
+        // samwise/CH-API-KEY/Authorization depending on endpoint (confirmed empirically against
+        // /search) - send all three so auth-gated content (e.g. NSFL) isn't silently dropped just
+        // because one endpoint prefers a different header name.
         headers['Authorization'] = `Bearer ${token}`;
         headers['samwise'] = token;
         headers['CH-API-KEY'] = token;
@@ -101,7 +151,7 @@ export async function fetchChubMetadata(fullPath) {
     }
 
     try {
-        const url = `${CHUB_API_BASE}/api/characters/${fullPath}?full=true`;
+        const url = `${getChubApiBase()}/api/characters/${fullPath}?full=true`;
         debugLog('[Chub] Fetching metadata from:', url);
 
         let response;
@@ -200,13 +250,13 @@ export async function fetchChubLinkedLorebook(projectId) {
         }
     };
     try {
-        const commitsResp = await tryFetch(`${CHUB_API_BASE}/api/v4/projects/${projectId}/repository/commits`);
+        const commitsResp = await tryFetch(`${getChubApiBase()}/api/v4/projects/${projectId}/repository/commits`);
         if (!commitsResp.ok) return null;
         const commits = await commitsResp.json();
         const ref = Array.isArray(commits) && commits[0]?.id;
         if (!ref) return null;
 
-        const cardResp = await tryFetch(`${CHUB_API_BASE}/api/v4/projects/${projectId}/repository/files/raw%252Fcard.json/raw?ref=${ref}`);
+        const cardResp = await tryFetch(`${getChubApiBase()}/api/v4/projects/${projectId}/repository/files/raw%252Fcard.json/raw?ref=${ref}`);
         if (!cardResp.ok) return null;
         const card = await cardResp.json();
         const book = card?.data?.character_book || card?.character_book || null;

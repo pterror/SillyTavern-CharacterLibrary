@@ -234,8 +234,16 @@ export async function fetchWithProxy(url, opts = {}) {
             _proxyOrigins.add(origin);
         }
         if (directResponse) {
-            if (!directResponse.ok) throw httpFailureError(directResponse.status, await directResponse.text().catch(() => ''));
-            return directResponse;
+            if (directResponse.ok) return directResponse;
+            // Some upstreams reject the browser Origin even when CORS passes.
+            // Remember and retry through ST /proxy/ which strips Origin/Referer.
+            // 401 is genuine auth-fail and should propagate; only origin-shaped
+            // rejections (403 forbidden, 451 region block) get retried.
+            if (directResponse.status === 403 || directResponse.status === 451) {
+                _proxyOrigins.add(origin);
+            } else {
+                throw httpFailureError(directResponse.status, await directResponse.text().catch(() => ''));
+            }
         }
     }
     let r;
