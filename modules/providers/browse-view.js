@@ -2,7 +2,7 @@
 
 import CoreAPI from '../core-api.js';
 import { normalizeBrowseName, isMobileMode, scrollBrowseListTop, fetchWithProxy, slugify } from './provider-utils.js';
-import { CHUB_API_BASE, getChubHeaders, extractNodes } from './chub/chub-api.js';
+import { getChubApiBase, getChubHeaders, extractNodes } from './chub/chub-api.js';
 import { BOTBOORU_BASE, fetchBotbooruUser } from './botbooru/botbooru-api.js';
 import { fetchCharactersByOwner, getCharacterPageUrl } from './pygmalion/pygmalion-api.js';
 import { WYVERN_API_BASE, WYVERN_SITE_BASE, getWyvernHeaders, getWyvernCharName } from './wyvern/wyvern-api.js';
@@ -188,7 +188,7 @@ const CD_ADAPTERS = {
                 params.set('include_forks', 'true');
                 params.set('venus', 'false');
                 params.set('min_tokens', '50');
-                const resp = await fetch(`${CHUB_API_BASE}/search?${params.toString()}`, { headers: getChubHeaders(true) });
+                const resp = await fetch(`${getChubApiBase()}/search?${params.toString()}`, { headers: getChubHeaders(true) });
                 if (!resp.ok) throw new Error(`ChubAI API error ${resp.status}`);
                 const data = await resp.json();
                 const nodes = extractNodes(data);
