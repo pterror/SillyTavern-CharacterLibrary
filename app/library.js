@@ -19321,7 +19321,15 @@ async function importLocalCharacter(file) {
         if (result.error) {
             throw new Error('Import failed: Server returned error');
         }
-        
+
+        // Server-side content-hash dedup: {duplicate: true, duplicate_of: <id>}, no file_name.
+        // Previously fell through to the success path below and fabricated a fileName from the
+        // original upload's name even though nothing was written - reporting a fake success and,
+        // in a batch, throwing off later same-named files' dedup numbering.
+        if (result.duplicate) {
+            return { success: false, error: `Duplicate of an existing character (skipped)`, duplicate: true, duplicateOf: result.duplicate_of || null };
+        }
+
         return {
             success: true,
             fileName: ensurePngExt(result.file_name || file.name),
