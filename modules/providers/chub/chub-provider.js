@@ -512,7 +512,7 @@ class ChubProvider extends ProviderBase {
 
     getAuthHeaders() {
         const token = api?.getSetting('chubToken');
-        return token ? { Authorization: `Bearer ${token}` } : {};
+        return token ? { Authorization: `Bearer ${token}`, samwise: token, 'CH-API-KEY': token } : {};
     }
 
     // ── URL Handling ────────────────────────────────────────
@@ -551,7 +551,7 @@ class ChubProvider extends ProviderBase {
                 label: 'URQL Token',
                 type: 'password',
                 defaultValue: null,
-                hint: 'Token for ChubAI API authentication',
+                hint: 'Token for ChubAI API authentication - also required to see NSFL results in search.',
                 section: 'Authentication'
             },
             {

@@ -46,7 +46,12 @@ export function getChubHeaders(includeAuth = true) {
     const headers = { 'Accept': 'application/json' };
     const token = _getSetting?.('chubToken');
     if (includeAuth && token) {
+        // chub.ai's gateway accepts the same credential under any of these three header names
+        // depending on endpoint (confirmed empirically against /search); send all three so auth-gated
+        // content (e.g. NSFL) isn't silently dropped just because one endpoint prefers a different one.
         headers['Authorization'] = `Bearer ${token}`;
+        headers['samwise'] = token;
+        headers['CH-API-KEY'] = token;
     }
     return headers;
 }
