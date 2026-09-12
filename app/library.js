@@ -11959,21 +11959,28 @@ async function openModal(char, { navList } = {}) {
         }
     }
 
-    // Dates/Tokens
-    let dateDisplay = 'Unknown';
+    // Dates/Tokens - shown as two separate fields: when this card was added to the library
+    // (date_added, local/filesystem-derived) vs. what the card itself claims as its creation
+    // date (create_date, provider- or authoring-tool-supplied - not necessarily trustworthy,
+    // but distinct information the previous single merged "Created:" field discarded).
+    let dateAddedDisplay = 'Unknown';
     if (char.date_added) {
         const d = new Date(Number(char.date_added));
-        if (!isNaN(d.getTime())) dateDisplay = d.toLocaleDateString();
-    } else {
-        const rawCreateDate = getCharacterCreateDateValue(char);
-        if (rawCreateDate) {
-            const d = new Date(rawCreateDate);
-            if (!isNaN(d.getTime())) dateDisplay = formatDateTime(rawCreateDate);
-            else if (rawCreateDate.length < 20) dateDisplay = rawCreateDate;
-        }
+        if (!isNaN(d.getTime())) dateAddedDisplay = d.toLocaleDateString();
     }
-    
-    document.getElementById('modalDate').innerText = dateDisplay;
+    document.getElementById('modalDateAdded').innerText = dateAddedDisplay;
+
+    const dateCreatedContainer = document.getElementById('modalDateCreatedContainer');
+    const rawCreateDate = getCharacterCreateDateValue(char);
+    if (rawCreateDate) {
+        let dateCreatedDisplay = rawCreateDate;
+        const d = new Date(rawCreateDate);
+        if (!isNaN(d.getTime())) dateCreatedDisplay = formatDateTime(rawCreateDate);
+        document.getElementById('modalDateCreated').innerText = dateCreatedDisplay;
+        if (dateCreatedContainer) dateCreatedContainer.style.display = '';
+    } else if (dateCreatedContainer) {
+        dateCreatedContainer.style.display = 'none';
+    }
 
     // Author
     const author = char.creator || (char.data ? char.data.creator : "") || "";
