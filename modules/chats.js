@@ -28,6 +28,84 @@ let allGroups = new Map();
 let currentGrouping = 'flat'; // 'flat' or 'grouped'
 let currentChatSort = 'recent';
 let currentPreviewChat = null;
+
+// ========================================
+// MULTI-SELECT (Chats screen)
+// ========================================
+let chatsMultiSelectEnabled = false;
+const selectedChatKeys = new Set();
+
+function chatKey(chat) {
+    return chat.isGroup ? `${chat.file_name}|g:${chat.groupId}` : `${chat.file_name}|c:${chat.charAvatar}`;
+}
+
+function updateChatsMultiSelectUI() {
+    document.body.classList.toggle('chats-multi-select-mode', chatsMultiSelectEnabled);
+    document.getElementById('chatsMultiSelectToggleBtn')?.classList.toggle('active', chatsMultiSelectEnabled);
+    const toolbar = document.getElementById('chatsMultiSelectToolbar');
+    toolbar?.classList.toggle('hidden', !chatsMultiSelectEnabled);
+    const countEl = document.getElementById('chatsMultiSelectCount');
+    if (countEl) countEl.textContent = String(selectedChatKeys.size);
+}
+
+function setChatsMultiSelectEnabled(enabled) {
+    chatsMultiSelectEnabled = enabled;
+    if (!enabled) selectedChatKeys.clear();
+    updateChatsMultiSelectUI();
+    renderChats();
+}
+
+function toggleChatSelection(chat) {
+    const key = chatKey(chat);
+    if (selectedChatKeys.has(key)) selectedChatKeys.delete(key);
+    else selectedChatKeys.add(key);
+    updateChatsMultiSelectUI();
+    syncChatCardSelectionClasses();
+}
+
+function syncChatCardSelectionClasses() {
+    document.querySelectorAll('#chatsGrid .chat-card, #chatsGroupedView .chat-group-item').forEach(el => {
+        const chat = findChatByElement(el);
+        el.classList.toggle('selected', !!chat && selectedChatKeys.has(chatKey(chat)));
+    });
+}
+
+function selectAllVisibleChats() {
+    const cards = document.querySelectorAll('#chatsGrid .chat-card, #chatsGroupedView .chat-group-item');
+    for (const el of cards) {
+        const chat = findChatByElement(el);
+        if (chat) selectedChatKeys.add(chatKey(chat));
+    }
+    updateChatsMultiSelectUI();
+    syncChatCardSelectionClasses();
+}
+
+async function deleteSelectedChats() {
+    if (selectedChatKeys.size === 0) return;
+    if (!confirm(`Delete ${selectedChatKeys.size} selected chat${selectedChatKeys.size > 1 ? 's' : ''}?\n\nThis cannot be undone!`)) {
+        return;
+    }
+
+    const targets = allChats.filter(c => selectedChatKeys.has(chatKey(c)));
+    let deleted = 0;
+    for (const chat of targets) {
+        try {
+            if (await deleteChatEntryNoConfirm(chat)) deleted++;
+        } catch (e) {
+            console.error('[MultiSelect] Failed to delete chat:', chat.file_name, e);
+        }
+    }
+
+    selectedChatKeys.clear();
+    updateChatsMultiSelectUI();
+    renderChats();
+
+    if (deleted === targets.length) {
+        CoreAPI.showToast(`Deleted ${deleted} chat${deleted > 1 ? 's' : ''}`, 'success');
+    } else {
+        CoreAPI.showToast(`Deleted ${deleted} of ${targets.length} chats - some failed`, 'warning');
+    }
+}
 let currentPreviewChar = null;
 let currentChatMessages = [];
 let chatPreviewRenderGen = 0;
@@ -346,6 +424,7 @@ function initChatsView() {
 
     CoreAPI.onViewExit('chats', () => {
         disconnectObservers();
+        if (chatsMultiSelectEnabled) setChatsMultiSelectEnabled(false);
     });
 
     // Chats Sort Select
@@ -377,6 +456,13 @@ function initChatsView() {
         allChats = [];
         loadAllChats(true);
     });
+
+    // Multi-select mode toggle + bulk actions
+    CoreAPI.onElement('chatsMultiSelectToggleBtn', 'click', () => {
+        setChatsMultiSelectEnabled(!chatsMultiSelectEnabled);
+    });
+    CoreAPI.onElement('chatsMultiSelectAllBtn', 'click', () => selectAllVisibleChats());
+    CoreAPI.onElement('chatsMultiSelectDeleteBtn', 'click', () => deleteSelectedChats());
 
     // Chat Preview Modal handlers
     CoreAPI.onElement('chatPreviewClose', 'click', () => CoreAPI.hideModal('chatPreviewModal'));
@@ -468,6 +554,12 @@ function initChatsView() {
             const chat = findChatByElement(card);
             if (!chat) return;
 
+            if (chatsMultiSelectEnabled) {
+                e.stopPropagation();
+                toggleChatSelection(chat);
+                return;
+            }
+
             const charNameEl = e.target.closest('.clickable-char-name');
             if (charNameEl && !chat.isGroup) {
                 e.stopPropagation();
@@ -517,6 +609,12 @@ function initChatsView() {
             const chatGroup = item.closest('.chat-group');
             const chat = findChatByElement(item);
             if (!chat) return;
+
+            if (chatsMultiSelectEnabled) {
+                e.stopPropagation();
+                toggleChatSelection(chat);
+                return;
+            }
 
             const actionBtn = e.target.closest('.chat-card-action, .chat-lore-btn');
             if (actionBtn) {
@@ -1318,6 +1416,7 @@ function createChatCard(chat) {
 
     return `
         <div class="chat-card ${isActive ? 'active' : ''} ${chat.isGroup ? 'group-chat' : ''}" ${chatDataAttrs(chat)}${needsPreview ? ' data-needs-preview="1"' : ''}>
+            <div class="chat-card-checkbox" aria-hidden="true"><i class="fa-solid fa-check"></i></div>
             <div class="chat-card-header">
                 ${avatarHtml}
                 <div class="chat-card-char-info">
@@ -1365,6 +1464,7 @@ function createGroupedChatItem(chat) {
 
     return `
         <div class="chat-group-item" ${chatDataAttrs(chat)}${needsPreview ? ' data-needs-preview="1"' : ''}>
+            <div class="chat-card-checkbox" aria-hidden="true"><i class="fa-solid fa-check"></i></div>
             <div class="chat-group-item-icon"><i class="fa-solid fa-message"></i></div>
             <div class="chat-group-item-info">
                 <div class="chat-group-item-name">${CoreAPI.escapeHtml(chatName)}</div>
@@ -1819,38 +1919,46 @@ async function openGroupChat(groupId, chatFile) {
     }
 }
 
+// Deletes one chat with no confirmation prompt and no re-render - callers own both, so a bulk
+// delete (deleteSelectedChats) can confirm once and render once instead of per-item.
+async function deleteChatEntryNoConfirm(chat) {
+    let response;
+    if (chat.isGroup) {
+        response = await CoreAPI.apiRequest(ENDPOINTS.CHATS_GROUP_DELETE, 'POST', {
+            id: chat.file_name.replace('.jsonl', '')
+        });
+    } else {
+        response = await CoreAPI.apiRequest(ENDPOINTS.CHATS_DELETE, 'POST', {
+            chatfile: chat.file_name,
+            avatar_url: chat.character.avatar
+        });
+    }
+
+    if (!response.ok) return false;
+
+    const idx = chat.isGroup
+        ? allChats.findIndex(c => c.file_name === chat.file_name && c.isGroup && c.groupId === chat.groupId)
+        : allChats.findIndex(c => c.file_name === chat.file_name && c.charAvatar === chat.charAvatar);
+    if (idx !== -1) {
+        allChats.splice(idx, 1);
+    }
+
+    if (currentPreviewChat === chat) {
+        document.getElementById('chatPreviewModal').classList.add('hidden');
+    }
+
+    return true;
+}
+
 async function deleteChatFromView(chat) {
     if (!confirm(`Delete this chat?\n\n${chat.file_name}\n\nThis cannot be undone!`)) {
         return;
     }
 
     try {
-        let response;
-        if (chat.isGroup) {
-            response = await CoreAPI.apiRequest(ENDPOINTS.CHATS_GROUP_DELETE, 'POST', {
-                id: chat.file_name.replace('.jsonl', '')
-            });
-        } else {
-            response = await CoreAPI.apiRequest(ENDPOINTS.CHATS_DELETE, 'POST', {
-                chatfile: chat.file_name,
-                avatar_url: chat.character.avatar
-            });
-        }
-
-        if (response.ok) {
+        const ok = await deleteChatEntryNoConfirm(chat);
+        if (ok) {
             CoreAPI.showToast('Chat deleted', 'success');
-
-            const idx = chat.isGroup
-                ? allChats.findIndex(c => c.file_name === chat.file_name && c.isGroup && c.groupId === chat.groupId)
-                : allChats.findIndex(c => c.file_name === chat.file_name && c.charAvatar === chat.charAvatar);
-            if (idx !== -1) {
-                allChats.splice(idx, 1);
-            }
-
-            if (currentPreviewChat === chat) {
-                document.getElementById('chatPreviewModal').classList.add('hidden');
-            }
-
             renderChats();
         } else {
             CoreAPI.showToast('Failed to delete chat', 'error');

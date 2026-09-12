@@ -305,6 +305,9 @@
                     <button id="refreshChatsViewBtn" class="glass-btn icon-only" title="Refresh Chats">
                         <i class="fa-solid fa-sync"></i>
                     </button>
+                    <button id="chatsMultiSelectToggleBtn" class="glass-btn icon-only" title="Select multiple chats">
+                        <i class="fa-solid fa-check-double"></i>
+                    </button>
                 </div>
 
                 <!-- Online view - provider selector + filters -->
@@ -332,6 +335,26 @@
 
             <!-- Chats View (hidden by default) -->
             <div id="chatsView" class="chats-view hidden">
+                <div id="chatsMultiSelectToolbar" class="multi-select-toolbar hidden">
+                    <div class="multi-select-left">
+                        <div class="multi-select-badge">
+                            <i class="fa-solid fa-comments"></i>
+                            <span id="chatsMultiSelectCount">0</span>
+                        </div>
+                        <span class="multi-select-label">chats selected</span>
+                    </div>
+                    <div class="multi-select-actions">
+                        <button id="chatsMultiSelectAllBtn" class="ms-btn ms-btn-ghost" title="Select all visible chats">
+                            <i class="fa-solid fa-check-double"></i>
+                            <span>Select All</span>
+                        </button>
+                        <div class="ms-divider"></div>
+                        <button id="chatsMultiSelectDeleteBtn" class="ms-btn ms-btn-danger" title="Delete all selected chats">
+                            <i class="fa-solid fa-trash"></i>
+                            <span>Delete</span>
+                        </button>
+                    </div>
+                </div>
                 <div id="chatsGrid" class="chats-grid">
                     <!-- Chat cards will be injected here -->
                 </div>

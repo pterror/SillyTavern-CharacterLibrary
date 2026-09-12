@@ -1598,4 +1598,180 @@ html.cl-mobile .chats-empty { padding: 40px 16px; }
 html.cl-mobile .chats-empty i { font-size: 2.5rem; }
 html.cl-mobile .chats-empty h3 { font-size: var(--font-base); }
 html.cl-mobile .chats-empty p { font-size: var(--font-md); }
+
+/* ========================================
+   Multi-Select (Chats screen)
+   Mirrors modules/multi-select.css's .char-card-checkbox convention -
+   same class name, scoped separately here so this file's own lazy-load
+   (tied to chats.js, not the character multi-select module) covers it.
+   ======================================== */
+body.chats-multi-select-mode .chat-card,
+body.chats-multi-select-mode .chat-group-item {
+    cursor: pointer;
+    position: relative;
+}
+
+.chat-card-checkbox {
+    display: none;
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    width: 24px;
+    height: 24px;
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    border-radius: var(--radius-sm);
+    background: rgba(0, 0, 0, 0.3);
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: var(--font-md-lg);
+    z-index: 10;
+    transition: all 0.2s;
+}
+
+.chat-card-checkbox i {
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+body.chats-multi-select-mode .chat-card-checkbox {
+    display: flex;
+}
+
+body.chats-multi-select-mode .chat-card.selected .chat-card-checkbox,
+body.chats-multi-select-mode .chat-group-item.selected .chat-card-checkbox {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+
+body.chats-multi-select-mode .chat-card.selected .chat-card-checkbox i,
+body.chats-multi-select-mode .chat-group-item.selected .chat-card-checkbox i {
+    opacity: 1;
+}
+
+body.chats-multi-select-mode .chat-card:hover .chat-card-checkbox,
+body.chats-multi-select-mode .chat-group-item:hover .chat-card-checkbox {
+    border-color: var(--accent);
+}
+
+#chatsMultiSelectToggleBtn.active {
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-secondary) 100%);
+    color: var(--accent-text);
+    box-shadow: 0 2px 8px var(--accent-glow);
+}
+
+/* Toolbar/button classes shared with modules/multi-select.css by name (same visual language) -
+   duplicated here (not imported) so this feature works whether or not the character multi-select
+   module has happened to load yet; harmless if both are present since the rules are identical. */
+.multi-select-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: linear-gradient(135deg, rgba(26, 26, 46, 0.95) 0%, rgba(30, 30, 50, 0.95) 100%);
+    border-bottom: 1px solid rgba(var(--accent-rgb), 0.2);
+    gap: var(--space-lg);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+    flex-wrap: nowrap;
+    overflow-x: auto;
+}
+
+.multi-select-toolbar.hidden {
+    display: none;
+}
+
+.multi-select-left {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm-md);
+}
+
+.multi-select-badge {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-secondary) 100%);
+    padding: 6px 12px;
+    border-radius: var(--radius-4xl);
+    font-weight: 600;
+    font-size: var(--font-base);
+    color: var(--accent-text);
+    box-shadow: 0 2px 8px var(--accent-glow);
+}
+
+.multi-select-badge i {
+    font-size: var(--font-md);
+    opacity: 0.9;
+}
+
+.multi-select-label {
+    color: var(--SmartThemeBodyColor, #aaa);
+    font-size: var(--font-md);
+}
+
+.multi-select-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs-sm);
+    flex: 1;
+    justify-content: center;
+    flex-wrap: nowrap;
+}
+
+.ms-divider {
+    width: 1px;
+    height: 24px;
+    background: rgba(255, 255, 255, 0.15);
+    margin: 0 6px;
+}
+
+.ms-btn {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs-sm);
+    padding: 8px 14px;
+    border-radius: var(--radius-lg);
+    border: 1px solid transparent;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--SmartThemeBodyColor, #eee);
+    cursor: pointer;
+    font-size: var(--font-md);
+    font-weight: 500;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.ms-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.1);
+    transform: translateY(-1px);
+}
+
+.ms-btn:active {
+    transform: translateY(0);
+}
+
+.ms-btn i {
+    font-size: var(--font-base);
+}
+
+.ms-btn-ghost {
+    background: transparent;
+}
+
+.ms-btn-ghost:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.ms-btn-danger {
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+    border-color: rgba(239, 68, 68, 0.2);
+}
+
+.ms-btn-danger:hover {
+    background: rgba(239, 68, 68, 0.25);
+    border-color: rgba(239, 68, 68, 0.4);
+}
 html.cl-mobile .chats-view .chats-loading { padding: 40px; font-size: var(--font-base); }
