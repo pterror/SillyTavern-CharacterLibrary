@@ -26081,9 +26081,14 @@ function calculateCharacterSimilarity(charA, charB) {
     }
     
     // === CONTENT IDENTICAL CHECK ===
+    // Previously gated behind breakdown.name && breakdown.creator && substantialPairs >= 1, which
+    // meant two byte-identical cards with short fields (all under the fuzzy comparisons' 20/30/50
+    // char minimums) or an empty creator on either side never even ran this check - exact
+    // duplicates were silently missed. An exact-text comparison needs none of those preconditions;
+    // it's checked directly against whatever content exists, at any length.
     let contentIdentical = false;
     let strictIdentical = false;
-    if (breakdown.name && breakdown.creator && substantialPairs >= 1) {
+    {
         const has = (t) => !!(t && t.length > 0);
         const asymmetric = (a, b) => has(a) !== has(b);
         const textMismatch = (a, b) => has(a) && has(b) && contentSimilarity(a, b) < 1.0;
@@ -26093,7 +26098,12 @@ function calculateCharacterSimilarity(charA, charB) {
         const sysPromptA = getCharField(charA, 'system_prompt') || '';
         const sysPromptB = getCharField(charB, 'system_prompt') || '';
 
-        contentIdentical = true;
+        // Two cards with every one of these fields blank aren't "identical content" - there's
+        // nothing to compare, so require at least one non-empty to avoid flagging two minimal/
+        // stub characters (name + avatar only) as duplicates of each other.
+        const anyContent = has(descA) || has(firstMesA) || has(persA) || has(scenA) || has(notesA) || has(mesExA) || has(sysPromptA);
+
+        contentIdentical = anyContent;
         if (asymmetric(descA, descB) || textMismatch(descA, descB)) contentIdentical = false;
         if (asymmetric(firstMesA, firstMesB) || textMismatch(firstMesA, firstMesB)) contentIdentical = false;
         if (asymmetric(persA, persB) || textMismatch(persA, persB)) contentIdentical = false;
@@ -26114,7 +26124,15 @@ function calculateCharacterSimilarity(charA, charB) {
             if (!eq(sysPromptA, sysPromptB)) strictIdentical = false;
         }
     }
-    
+
+    // An exact text match is never a false positive regardless of what the fuzzy scoring above
+    // produced - force it to the top of the confidence scale so it can't be filtered out by a
+    // min-score threshold the way a short-content pair previously could be.
+    if (strictIdentical) {
+        score = Math.max(score, 100);
+        matchReasons.unshift('Exact content match');
+    }
+
     // === DETERMINE CONFIDENCE ===
     let confidence = null;
     if (score >= 60) confidence = 'high';
