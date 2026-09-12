@@ -152,7 +152,7 @@ function createCard(hit) {
                 <div class="browse-card-name">${escapeHtml(name)}</div>
                 ${creatorName ? `<span class="browse-card-creator-link" data-creator-id="${escapeHtml(hit.creator_id || '')}" data-creator-name="${escapeHtml(creatorName)}" title="Click to see all characters by ${escapeHtml(creatorName)}">${escapeHtml(creatorName)}</span>` : ''}
                 <div class="browse-card-tags">
-                    ${tags.map(t => `<span class="browse-card-tag" title="${escapeHtml(t)}">${escapeHtml(t)}</span>`).join('')}
+                    ${tags.map(t => `<span class="browse-card-tag" style="cursor: pointer;" title="Click to filter by &quot;${escapeHtml(t)}&quot;">${escapeHtml(t)}</span>`).join('')}
                 </div>
             </div>
             <div class="browse-card-footer">
@@ -553,7 +553,7 @@ function openPreviewModal(hit) {
     setHiddenNotice(null);
 
     const tagsEl = document.getElementById('janitoraiCharTags');
-    tagsEl.innerHTML = (hit.tags || []).map(t => `<span class="browse-tag">${escapeHtml(t.name || '')}</span>`).join('');
+    tagsEl.innerHTML = (hit.tags || []).map(t => `<span class="browse-tag" style="cursor: pointer;" title="Click to filter by this tag">${escapeHtml(t.name || '')}</span>`).join('');
     // After paint: the clamp measures offsetTop, which is meaningless until layout has run.
     requestAnimationFrame(() => applyJanitoraiTagsClamp(tagsEl));
 
@@ -915,7 +915,7 @@ async function fetchAndPopulateDetails(hit, token) {
                 ...(detail.tags || []).map(t => t?.name || ''),
                 ...(detail.custom_tags || []).map(t => (typeof t === 'string' ? t : t?.name || '')),
             ].filter(Boolean);
-            tagsEl.innerHTML = allTags.map(t => `<span class="browse-tag">${escapeHtml(decodeHtmlEntities(t))}</span>`).join('');
+            tagsEl.innerHTML = allTags.map(t => `<span class="browse-tag" style="cursor: pointer;" title="Click to filter by this tag">${escapeHtml(decodeHtmlEntities(t))}</span>`).join('');
             requestAnimationFrame(() => applyJanitoraiTagsClamp(tagsEl));
         }
 
@@ -1567,6 +1567,26 @@ async function toggleCreatorFollow() {
     }
 }
 
+/**
+ * Filter the browse view by a tag name clicked directly on a card/preview, mirroring
+ * filterByCreator's click-to-filter pattern. Only works for official (catalogued) tags, which
+ * carry a stable numeric id the search API accepts - community "#"-prefixed tags have no id and
+ * can't be filtered server-side (see fetchJanitoraiTags/resolveJanitoraiTagIds).
+ * @param {string} tagName
+ */
+async function filterByTagName(tagName) {
+    await ensureTagCatalogue();
+    const tag = jaTagCatalogue.find(t => t.name === tagName);
+    if (!tag) {
+        showToast(`"${tagName}" is a community tag and can't be filtered directly - JanitorAI doesn't expose a search-by-text API for it.`, 'info', 6000);
+        return;
+    }
+    jaIncludeTags.add(tag.id);
+    renderTagsList(document.getElementById('janitoraiTagsSearchInput')?.value || '');
+    updateTagsButton();
+    loadCharacters(false);
+}
+
 function filterByCreator(creatorId, creatorName) {
     if (!creatorId) {
         showToast('That card did not carry a creator id', 'warning');
@@ -1669,8 +1689,9 @@ function doSearch() {
     const clearBtn = document.getElementById('janitoraiClearSearchBtn');
     const val = (input?.value || '').trim();
 
-    if (jaCreatorFilter) clearCreatorFilter(false);
-
+    // A typed keyword no longer drops an active creator filter - loadCharacters() already
+    // sends `search` and `creatorIds` (user_id[]) as independent, combinable request params,
+    // so there was never a server-side reason to reset one when the other changes.
     jaCurrentSearch = val;
     if (clearBtn) clearBtn.classList.toggle('hidden', !val);
 
@@ -1727,6 +1748,12 @@ function initView() {
             if (creatorLink) {
                 e.stopPropagation();
                 filterByCreator(creatorLink.dataset.creatorId, creatorLink.dataset.creatorName);
+                return;
+            }
+            const tagChip = e.target.closest('.browse-card-tag');
+            if (tagChip) {
+                e.stopPropagation();
+                filterByTagName(tagChip.textContent);
                 return;
             }
             const card = e.target.closest('.browse-card');
@@ -1892,6 +1919,16 @@ function initView() {
                     closePreviewModal();
                     filterByCreator(id, name);
                 }
+            });
+        }
+
+        const charTagsEl = document.getElementById('janitoraiCharTags');
+        if (charTagsEl) {
+            charTagsEl.addEventListener('click', (e) => {
+                const tagChip = e.target.closest('.browse-tag');
+                if (!tagChip) return;
+                closePreviewModal();
+                filterByTagName(tagChip.textContent);
             });
         }
 
