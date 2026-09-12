@@ -363,6 +363,7 @@ async function initModuleSystem() {
     loadModuleCSS('./providers/saucepan/saucepan-browse.css');
     loadModuleCSS('./providers/botbooru/botbooru-browse.css');
     loadModuleCSS('./providers/janitorai/janitorai-browse.css');
+    loadModuleCSS('./providers/crrepo/crrepo-browse.css');
     {
         const providerImports = [
             { name: 'chub', load: () => import('./providers/chub/chub-provider.js') },
@@ -379,6 +380,7 @@ async function initModuleSystem() {
             { name: 'saucepan', load: () => import('./providers/saucepan/saucepan-provider.js') },
             { name: 'botbooru', load: () => import('./providers/botbooru/botbooru-provider.js') },
             { name: 'charavault', load: () => import('./providers/charavault/charavault-provider.js') },
+            { name: 'crrepo', load: () => import('./providers/crrepo/crrepo-provider.js') },
         ];
         const results = await Promise.allSettled(providerImports.map(p => p.load()));
         for (let i = 0; i < results.length; i++) {

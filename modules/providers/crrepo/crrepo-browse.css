@@ -1,0 +1,120 @@
+.crrepo-view {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 10px;
+}
+
+.crrepo-add-row {
+    display: flex;
+    gap: 8px;
+}
+
+.crrepo-add-row input {
+    flex: 1;
+}
+
+.crrepo-bundle-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.crrepo-bundle-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: var(--radius-lg, 8px);
+    background: var(--card-bg, rgba(40, 40, 40, 0.4));
+    border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.1));
+}
+
+.crrepo-bundle-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+.crrepo-bundle-icon-fallback {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    opacity: 0.6;
+}
+
+.crrepo-bundle-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.crrepo-bundle-title {
+    font-weight: bold;
+}
+
+.crrepo-bundle-desc {
+    font-size: var(--font-sm, 0.85em);
+    opacity: 0.75;
+}
+
+.crrepo-bundle-count {
+    font-size: var(--font-sm, 0.85em);
+    opacity: 0.6;
+}
+
+.crrepo-bundle-error {
+    font-size: var(--font-sm, 0.85em);
+    color: var(--cl-error-bright, #ff6b6b);
+}
+
+.crrepo-bundle-remove {
+    cursor: pointer;
+    opacity: 0.5;
+    padding: 4px;
+}
+
+.crrepo-bundle-remove:hover {
+    opacity: 1;
+}
+
+.crrepo-char-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 10px;
+}
+
+.crrepo-char-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px;
+    border-radius: var(--radius-lg, 8px);
+    background: var(--card-bg, rgba(40, 40, 40, 0.4));
+    border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.1));
+}
+
+.crrepo-char-title {
+    font-weight: bold;
+}
+
+.crrepo-char-desc {
+    font-size: var(--font-sm, 0.85em);
+    opacity: 0.75;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+}
+
+.crrepo-empty,
+.crrepo-loading {
+    opacity: 0.6;
+    padding: 20px;
+    text-align: center;
+}
