@@ -292,7 +292,21 @@ function buildSingleMenuItems(char, cardElement) {
             action: () => CoreAPI.openProviderLinkModal(char)
         });
     }
-    
+
+    // Update from a local card file works regardless of provider link status - the only path
+    // available for characters from unsupported/unlinked sources.
+    items.push({
+        icon: 'fa-solid fa-file-import',
+        label: 'Update from File',
+        action: () => {
+            const cardUpdates = CoreAPI.getModule('card-updates');
+            if (cardUpdates?.checkSingleCharacterFromFile) {
+                cardUpdates.checkSingleCharacterFromFile(char);
+            }
+        }
+    });
+
+
     // Version history (available for ALL characters - local snapshots + remote if provider-linked)
     items.push({
         icon: 'fa-solid fa-clock-rotate-left',

@@ -8089,19 +8089,35 @@ async function relocateSharedFolderImages(characters, options = {}) {
         
         if (onProgress) onProgress(i + 1, imagesToMove.length);
     }
-    
+
     if (onLogUpdate && logEntry) {
         const status = results.errors === 0 ? 'success' : 'warning';
-        onLogUpdate(logEntry, 
-            `${sharedFolderName}: ${results.moved} moved, ${results.unmatched} unmatched, ${results.errors} errors`, 
+        onLogUpdate(logEntry,
+            `${sharedFolderName}: ${results.moved} moved, ${results.unmatched} unmatched, ${results.errors} errors`,
             status
         );
     }
-    
+
     if (unmatchedImages.length > 0) {
         debugLog(`[Migration] Unmatched images in ${sharedFolderName}:`, unmatchedImages);
     }
-    
+
+    // Smart Relocate has the same orphaned-chat-link issue as unique-folder migration - fix
+    // embedded media links once per character that actually had files moved out of the shared folder.
+    const relocatedChars = new Map(); // avatar -> targetChar
+    for (const { targetChar } of imagesToMove) {
+        if (!relocatedChars.has(targetChar.avatar)) relocatedChars.set(targetChar.avatar, targetChar);
+    }
+    for (const targetChar of relocatedChars.values()) {
+        const uniqueFolder = buildUniqueGalleryFolderName(targetChar);
+        if (!uniqueFolder || uniqueFolder === sharedFolderName) continue;
+        try {
+            await rewriteEmbeddedMediaLinksInChats(targetChar, sharedFolderName, uniqueFolder);
+        } catch (error) {
+            debugError(`[Migration] Error fixing embedded chat media links for ${targetChar.name}:`, error);
+        }
+    }
+
     return results;
 }
 
@@ -8197,12 +8213,105 @@ async function migrateCharacterImagesToUniqueFolder(char) {
         }
         
         debugLog(`[MigrateAll] ${char.name}: Moved ${result.moved} files, ${result.errors} errors`);
-        
+
+        if (result.moved > 0) {
+            try {
+                result.chatLinksFixed = await rewriteEmbeddedMediaLinksInChats(char, oldFolderName, uniqueFolderName);
+            } catch (error) {
+                debugError(`[MigrateAll] Error fixing embedded chat media links for ${char.name}:`, error);
+            }
+        }
+
     } catch (error) {
         debugError(`[MigrateAll] Error migrating ${char.name}:`, error);
         result.errors++;
     }
-    
+
+    return result;
+}
+
+/**
+ * After moving a character's gallery folder, chat messages that embedded media from the old
+ * folder (manual uploads, AI-generated inline images, SD extension output, etc.) still point at
+ * the old /user/images/<oldFolder>/ path - the file moved, but the link inside the chat didn't.
+ * Rewrites every occurrence of the old folder path to the new one across all of the character's
+ * chats. Uses a blanket string replace over each chat's raw JSON rather than targeting specific
+ * message fields, since embedded media paths can appear in message text (markdown/HTML) or in
+ * any of several extra.* attachment fields depending on SillyTavern version and which extension
+ * created them.
+ * @param {object} char
+ * @param {string} oldFolderName
+ * @param {string} newFolderName
+ * @returns {Promise<{chatsScanned: number, chatsFixed: number, errors: number}>}
+ */
+async function rewriteEmbeddedMediaLinksInChats(char, oldFolderName, newFolderName) {
+    const result = { chatsScanned: 0, chatsFixed: 0, errors: 0 };
+
+    const oldPathVariants = [
+        `/user/images/${oldFolderName}/`,
+        `/user/images/${encodeURIComponent(oldFolderName)}/`,
+    ];
+    const newPath = `/user/images/${encodeURIComponent(newFolderName)}/`;
+
+    let chats;
+    try {
+        const listResponse = await apiRequest(ENDPOINTS.CHARACTERS_CHATS, 'POST', {
+            avatar_url: char.avatar,
+            metadata: true
+        });
+        if (!listResponse.ok) return result;
+        chats = await listResponse.json();
+    } catch (error) {
+        debugError(`[MigrateAll] Failed to list chats for ${char.name}:`, error);
+        result.errors++;
+        return result;
+    }
+
+    if (!Array.isArray(chats) || chats.length === 0) return result;
+
+    for (const chatMeta of chats) {
+        const fileName = (chatMeta.file_name || '').replace('.jsonl', '');
+        if (!fileName) continue;
+        result.chatsScanned++;
+
+        try {
+            const getResponse = await apiRequest(ENDPOINTS.CHATS_GET, 'POST', {
+                ch_name: char.name,
+                file_name: fileName,
+                avatar_url: char.avatar
+            });
+            if (!getResponse.ok) continue;
+
+            const messages = await getResponse.json();
+            if (!Array.isArray(messages) || messages.length === 0) continue;
+
+            let raw = JSON.stringify(messages);
+            const originalRaw = raw;
+            for (const variant of oldPathVariants) {
+                raw = raw.split(variant).join(newPath);
+            }
+
+            if (raw === originalRaw) continue;
+
+            const saveResponse = await apiRequest(ENDPOINTS.CHATS_SAVE, 'POST', {
+                ch_name: char.name,
+                file_name: fileName,
+                avatar_url: char.avatar,
+                chat: JSON.parse(raw)
+            });
+
+            if (saveResponse.ok) {
+                result.chatsFixed++;
+                debugLog(`[MigrateAll] Fixed embedded media links in chat "${fileName}" for ${char.name}`);
+            } else {
+                result.errors++;
+            }
+        } catch (error) {
+            debugError(`[MigrateAll] Error fixing chat "${fileName}" for ${char.name}:`, error);
+            result.errors++;
+        }
+    }
+
     return result;
 }
 
@@ -8278,16 +8387,21 @@ async function handleGalleryFolderRename(char, oldName, newName, galleryId) {
 
         result.success = result.errors === 0;
         debugLog(`[GalleryRename] Complete: ${result.moved} moved, ${result.errors} errors`);
-        
+
         if (result.moved > 0) {
             showToast(`Gallery folder renamed: ${result.moved} files moved`, 'success');
+            try {
+                await rewriteEmbeddedMediaLinksInChats(char, oldFolderName, newFolderName);
+            } catch (error) {
+                debugError(`[GalleryRename] Error fixing embedded chat media links for ${char.name}:`, error);
+            }
         }
-        
+
     } catch (error) {
         debugError(`[GalleryRename] Error:`, error);
         result.errors++;
     }
-    
+
     return result;
 }
 
@@ -9366,10 +9480,10 @@ function processAndRender(data) {
         recoverShallowExtensions(_recoveryGeneration);
     }
     
-    // Populate Tags set for the filter dropdown
+    // Populate Tags set for the filter dropdown (card-embedded + SillyTavern's own tags)
     const allTags = new Map();
     allCharacters.forEach(c => {
-         const tags = getTags(c);
+         const tags = getFilterableTags(c);
          if (Array.isArray(tags)) {
              tags.forEach(t => allTags.set(t, (allTags.get(t) || 0) + 1));
          }
@@ -9729,6 +9843,45 @@ function getTags(char) {
     if (Array.isArray(char.tags)) return char.tags;
     if (char.data && Array.isArray(char.data.tags)) return char.data.tags;
     return [];
+}
+
+/**
+ * Read-only view of SillyTavern's own tag system (Settings > Tags), which is entirely separate
+ * from the tags embedded in a card's own data.tags. Read directly from SillyTavern's tags/tagMap
+ * via its public getContext() API - never written back, so ST's tag UI/storage is untouched.
+ * @param {object} char
+ * @returns {string[]} ST tag names for this character, prefixed to stay visually distinct from
+ *   card-embedded tags of the same name in the filter list.
+ */
+function getSTTagNamesForCharacter(char) {
+    try {
+        const context = getSTContext();
+        const tagIds = context?.tagMap?.[char.avatar];
+        if (!Array.isArray(tagIds) || tagIds.length === 0) return [];
+        const tagsById = context.tags;
+        if (!Array.isArray(tagsById)) return [];
+        return tagIds
+            .map(id => tagsById.find(t => t.id === id)?.name)
+            .filter(Boolean)
+            .map(name => `ST: ${name}`);
+    } catch {
+        return [];
+    }
+}
+
+/**
+ * Tags usable for filtering: card-embedded tags plus SillyTavern's own tags (read-only, see
+ * getSTTagNamesForCharacter). Only used at filter-matching/filter-popup-population call sites -
+ * getTags() itself stays card-tags-only everywhere else (dedupe, batch tagging, sidebar display),
+ * since those write to or represent the card, not ST's separate tag system.
+ * @param {object} char
+ * @returns {string[]}
+ */
+function getFilterableTags(char) {
+    const cardTags = getTags(char);
+    const stTags = getSTTagNamesForCharacter(char);
+    if (stTags.length === 0) return cardTags;
+    return [...cardTags, ...stTags];
 }
 
 // ========================================
@@ -16832,7 +16985,7 @@ function performSearch() {
         //    Include mode: 'any' = OR (has at least one), 'all' = AND (has every one)
         //    Exclude mode: 'any' = reject if has any, 'all' = reject only if has all
         if (activeTagFilters.size > 0) {
-             const charTags = getTags(c);
+             const charTags = getFilterableTags(c);
 
              if (excludedTags.length > 0) {
                  const hasExcluded = tagExcludeMode === 'all'

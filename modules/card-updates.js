@@ -180,6 +180,79 @@ export async function checkSingleCharacter(char) {
     await performSingleCheck(char);
 }
 
+/**
+ * Update-check entry point for characters from unsupported/unlinked sources: prompts for a
+ * local character card file (PNG) instead of fetching from an online provider, then runs the
+ * result through the exact same diff/apply pipeline as a normal provider-based check. Works for
+ * any character regardless of provider link status.
+ * @param {Object} char - Character to check
+ */
+export function checkSingleCharacterFromFile(char) {
+    if (!isInitialized) {
+        console.error('[CardUpdates] Module not initialized');
+        return;
+    }
+
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.png,image/png';
+    input.addEventListener('change', async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+
+        showSingleCheckModal(char);
+        document.getElementById('cardUpdateSingleStatus').innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Reading file...';
+        await performSingleCheckFromFile(char, file);
+    });
+    input.click();
+}
+
+/**
+ * Perform update check for a single character against a locally-provided card file.
+ * @param {Object} char - Character to check
+ * @param {File} file - Character card PNG selected by the user
+ */
+async function performSingleCheckFromFile(char, file) {
+    const statusEl = document.getElementById('cardUpdateSingleStatus');
+    const contentEl = document.getElementById('cardUpdateSingleContent');
+    const applyBtn = document.getElementById('cardUpdateSingleApplyBtn');
+
+    try {
+        await CoreAPI.hydrateCharacter(char);
+
+        const arrayBuffer = await file.arrayBuffer();
+        let cardData = CoreAPI.extractCharacterDataFromPng(arrayBuffer);
+        if (!cardData) {
+            statusEl.innerHTML = '<i class="fa-solid fa-exclamation-triangle"></i> No character card data found in that PNG';
+            return;
+        }
+        if (!cardData.data && cardData.name) {
+            cardData = { spec: 'chara_card_v2', spec_version: '2.0', data: cardData };
+        }
+
+        const remoteCard = aliasRemoteCardTags(cardData);
+        const localData = char.data || char;
+        const diffs = compareCards(localData, remoteCard);
+
+        if (diffs.length === 0) {
+            statusEl.innerHTML = '<i class="fa-solid fa-check"></i> File matches the current card - no differences';
+            return;
+        }
+
+        statusEl.innerHTML = `<i class="fa-solid fa-arrow-right-arrow-left"></i> Found ${diffs.length} difference${diffs.length > 1 ? 's' : ''} (from file: ${CoreAPI.escapeHtml(file.name)})`;
+
+        currentUpdateChecks.set(char.avatar, { char, localData, remoteCard, diffs });
+
+        contentEl.innerHTML = renderDiffList(diffs);
+        resolveWorldFileStatus(contentEl, char.avatar).catch(e => console.error('[CardUpdates] World status check failed:', e));
+        applyBtn.disabled = false;
+
+    } catch (error) {
+        console.error('[CardUpdates] File check failed:', error);
+        statusEl.innerHTML = '<i class="fa-solid fa-xmark"></i> Error reading character card file';
+    }
+}
+
 export async function checkAllLinkedCharacters() {
     if (!isInitialized) {
         console.error('[CardUpdates] Module not initialized');
