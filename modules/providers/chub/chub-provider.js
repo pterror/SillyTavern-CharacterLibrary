@@ -711,6 +711,11 @@ class ChubProvider extends ProviderBase {
             const relatedLorebookPaths = (metadata.definition?.extensions?.chub?.related_lorebooks ?? [])
                 .map(entry => entry?.path)
                 .filter(Boolean);
+            // Expression pack(s) - fetched after import too, for the same reason (needs the
+            // character's real avatar filename to key its sprites folder, avoiding the same
+            // name-based-folder collision bug fixed in ST core's Expressions extension this
+            // session: two different cards can share a display name).
+            const chubExt = metadata.definition?.extensions?.chub;
             metadata = null;
 
             if (!characterCard.data.extensions) characterCard.data.extensions = {};
@@ -761,6 +766,10 @@ class ChubProvider extends ProviderBase {
                 await this._importLinkedLorebooks(result.fileName, characterName, relatedLorebookPaths);
             }
 
+            if (result?.success && result.fileName && chubExt) {
+                this._importChubExpressions(result.fileName, chubExt);
+            }
+
             return result;
         } catch (error) {
             console.error(`[ChubProvider] importCharacter failed for ${fullPath}:`, error);
@@ -801,6 +810,53 @@ class ChubProvider extends ProviderBase {
         const existing = await window.getCharAdditionalLorebooks?.(avatar) ?? [];
         await window.setCharAdditionalLorebooks?.(avatar, [...new Set([...existing, ...importedNames])]);
         api?.showToast?.(`Imported ${importedNames.length} linked lorebook(s) for ${characterName}`, 'success', 5000);
+    }
+
+    /**
+     * Imports Chub expression pack(s) - chubExt.expressions (the primary/default pack) and
+     * chubExt.alt_expressions (a map of named alternate packs) - into the character's own
+     * sprites folder, keyed by its avatar filename (not display name, avoiding the name-
+     * collision bug fixed in ST core's Expressions extension this session). Detached/best-
+     * effort by design: kicks off up to dozens of background fetches and doesn't block the
+     * import, mirroring src/endpoints/sprites.js's importChubExpressions() on the ST core side.
+     * Doesn't distinguish a pack's is_default (confirmed unreliable as a signal either way).
+     * @param {string} avatar Avatar filename of the just-imported character
+     * @param {Object} chubExt definition.extensions.chub from the Chub API response
+     */
+    async _importChubExpressions(avatar, chubExt) {
+        const packs = [{ folder: avatar, expressions: chubExt.expressions?.expressions }];
+        for (const [altKey, altPack] of Object.entries(chubExt.alt_expressions || {})) {
+            packs.push({ folder: `${avatar}/${altKey}`, expressions: altPack?.expressions });
+        }
+
+        for (const { folder, expressions } of packs) {
+            if (!expressions || typeof expressions !== 'object') continue;
+            const entries = Object.entries(expressions).filter(([, url]) => typeof url === 'string' && /^https?:\/\//.test(url));
+            if (entries.length === 0) continue;
+
+            for (const [emotion, url] of entries) {
+                try {
+                    const resp = await fetchWithProxy(url);
+                    const blob = await resp.blob();
+                    const ext = url.split('?')[0].split('.').pop() || 'png';
+                    const file = new File([blob], `${emotion}.${ext}`, { type: blob.type || 'image/png' });
+
+                    const formData = new FormData();
+                    formData.append('name', folder);
+                    formData.append('label', emotion);
+                    formData.append('avatar', file);
+
+                    const csrfToken = api?.getCSRFToken?.();
+                    await fetch('/api/sprites/upload', {
+                        method: 'POST',
+                        headers: { 'X-CSRF-Token': csrfToken },
+                        body: formData,
+                    });
+                } catch (e) {
+                    console.warn('[ChubProvider] Failed to import expression', emotion, 'for', folder, e);
+                }
+            }
+        }
     }
 
     // ── Gallery Download ────────────────────────────────────
