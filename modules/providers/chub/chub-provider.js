@@ -17,6 +17,7 @@ import {
     chubMetadataCache,
     fetchChubMetadata,
     fetchChubLinkedLorebook,
+    fetchChubLorebookRawByPath,
     buildCharacterCardFromChub,
 } from './chub-api.js';
 
@@ -704,6 +705,12 @@ class ChubProvider extends ProviderBase {
             const metadataListingName = this.getListingName(metadata);
             const metadataMaxResUrl = metadata.max_res_url || null;
             const metadataAvatarUrl = metadata.avatar_url || null;
+            // Kept separate from characterCard.data.character_book on purpose - see
+            // buildCharacterCardFromChub()'s doc comment. Imported as standalone additional
+            // Worlds after the character itself exists (needs its avatar filename to bind to).
+            const relatedLorebookPaths = (metadata.definition?.extensions?.chub?.related_lorebooks ?? [])
+                .map(entry => entry?.path)
+                .filter(Boolean);
             metadata = null;
 
             if (!characterCard.data.extensions) characterCard.data.extensions = {};
@@ -740,7 +747,7 @@ class ChubProvider extends ProviderBase {
 
             chubMetadataCache.delete(fullPath);
 
-            return await importFromPng({
+            const result = await importFromPng({
                 characterCard, imageBuffer,
                 fileName: `chub_${slugify(characterName)}.png`,
                 characterName, hasGallery,
@@ -749,10 +756,51 @@ class ChubProvider extends ProviderBase {
                 avatarUrl: `${getChubAvatarBase()}${fullPath}/avatar.webp`,
                 api
             });
+
+            if (result?.success && result.fileName && relatedLorebookPaths.length > 0) {
+                await this._importLinkedLorebooks(result.fileName, characterName, relatedLorebookPaths);
+            }
+
+            return result;
         } catch (error) {
             console.error(`[ChubProvider] importCharacter failed for ${fullPath}:`, error);
             return { success: false, error: error.message };
         }
+    }
+
+    /**
+     * Resolves and imports each of a character's linked (non-embedded) lorebooks as its own
+     * additional World Info file, bound via setCharAdditionalLorebooks - never merged into the
+     * character's own embedded_lorebook/character_book. Best-effort: a path that fails to
+     * resolve is skipped, not fatal to the others or to the character import that already
+     * succeeded.
+     * @param {string} avatar Avatar filename of the just-imported character
+     * @param {string} characterName Display name, used to build a readable World name
+     * @param {string[]} paths "lorebooks/creator/project-name" paths
+     */
+    async _importLinkedLorebooks(avatar, characterName, paths) {
+        const importedNames = [];
+        for (const path of paths) {
+            try {
+                const worldData = await fetchChubLorebookRawByPath(path);
+                if (!worldData) continue;
+                // Chub slugs already include a disambiguating hash suffix and are inherently
+                // filesystem-safe, unlike characterName - used as-is so the name we bind via
+                // setCharAdditionalLorebooks below is guaranteed to match what actually got
+                // written (saveWorldInfoData doesn't report back a server-sanitized name).
+                const worldName = path.split('/').pop();
+                const ok = await window.importWorldInfoData?.(worldName, worldData);
+                if (ok) importedNames.push(worldName);
+            } catch (e) {
+                console.warn('[ChubProvider] Failed to import linked lorebook', path, e);
+            }
+        }
+
+        if (importedNames.length === 0) return;
+
+        const existing = await window.getCharAdditionalLorebooks?.(avatar) ?? [];
+        await window.setCharAdditionalLorebooks?.(avatar, [...new Set([...existing, ...importedNames])]);
+        api?.showToast?.(`Imported ${importedNames.length} linked lorebook(s) for ${characterName}`, 'success', 5000);
     }
 
     // ── Gallery Download ────────────────────────────────────

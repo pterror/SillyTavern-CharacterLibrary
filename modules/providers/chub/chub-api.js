@@ -270,6 +270,56 @@ export async function fetchChubLinkedLorebook(projectId) {
     }
 }
 
+/**
+ * Fetch a linked (non-embedded) lorebook by its own "lorebooks/creator/project-name" path -
+ * definition.extensions.chub.related_lorebooks[].path, NOT the character's own id/path. Resolves
+ * the project id from that path first (metadata lookup), then reads its sillytavern_raw.json via
+ * the V4 Git API - the same native { entries: {...} } shape ST's own /worldinfo/import expects,
+ * so the result can be handed to window.importWorldInfoData() with no format conversion.
+ *
+ * Path-based (not id-based) on purpose: a bare numeric id is not confirmed to resolve unlisted
+ * content the same way a path does.
+ *
+ * @param {string} path - e.g. "lorebooks/creator/project-name"
+ * @returns {Promise<Object|null>} native World Info data ({ entries: {...} }), or null if unresolvable
+ */
+export async function fetchChubLorebookRawByPath(path) {
+    if (!path) return null;
+    const headers = getChubHeaders(true);
+    const tryFetch = async (url) => {
+        try { return await fetch(url, { headers }); }
+        catch (e) {
+            if (e.name === 'AbortError') throw e;
+            return await fetch(`/proxy/${proxyEncode(url)}`, { headers });
+        }
+    };
+    try {
+        const metaResp = await tryFetch(`${getChubApiBase()}/api/${path}`);
+        if (!metaResp.ok) return null;
+        const metaData = await metaResp.json();
+        const projectId = metaData?.node?.id;
+        if (!projectId) return null;
+
+        const commitsResp = await tryFetch(`${getChubApiBase()}/api/v4/projects/${projectId}/repository/commits`);
+        if (!commitsResp.ok) return null;
+        const commits = await commitsResp.json();
+        const ref = Array.isArray(commits) && commits[0]?.id;
+        if (!ref) return null;
+
+        const rawResp = await tryFetch(`${getChubApiBase()}/api/v4/projects/${projectId}/repository/files/raw%252Fsillytavern_raw.json/raw?ref=${ref}`);
+        if (!rawResp.ok) return null;
+        const worldData = await rawResp.json();
+        if (worldData?.entries && typeof worldData.entries === 'object') {
+            debugLog('[Chub] Resolved linked lorebook from V4 Git API for path', path);
+            return worldData;
+        }
+        return null;
+    } catch (e) {
+        console.error('[Chub] fetchChubLorebookRawByPath failed for', path, e);
+        return null;
+    }
+}
+
 // ========================================
 // GALLERY FETCH
 // ========================================
@@ -293,25 +343,17 @@ export async function fetchChubLinkedLorebook(projectId) {
  *   definition.embedded_lorebook     → data.character_book
  *   metadata.topics                  → data.tags
  *
- * Resolves linked lorebooks (separate Chub projects) via the V4 Git API
- * when related_lorebooks is present.
+ * Does NOT resolve linked (non-embedded) lorebooks - definition.extensions.chub.related_lorebooks
+ * is a separate Chub project, not a variant of this card's own embedded_lorebook, and importing
+ * one should never silently overwrite the other. The caller (ChubProvider.importCharacter)
+ * resolves and imports linked lorebooks separately, as their own additional World Info files.
  *
  * @param {Object} apiData - Metadata object from fetchChubMetadata()
- * @returns {Promise<Object>} V2-spec character card { spec, spec_version, data }
+ * @returns {Object} V2-spec character card { spec, spec_version, data }
  */
-export async function buildCharacterCardFromChub(apiData) {
+export function buildCharacterCardFromChub(apiData) {
     const def = apiData.definition || {};
-
-    let characterBook = def.embedded_lorebook || undefined;
-    if (apiData.related_lorebooks?.length > 0 && apiData.id) {
-        try {
-            debugLog('[Chub] Resolving linked lorebook for import via V4 Git API');
-            const linked = await fetchChubLinkedLorebook(apiData.id);
-            if (linked?.entries?.length > 0) characterBook = linked;
-        } catch (e) {
-            console.warn('[Chub] Failed to fetch linked lorebook for', apiData.fullPath, e);
-        }
-    }
+    const characterBook = def.embedded_lorebook || undefined;
 
     return {
         spec: 'chara_card_v2',
